@@ -1,6 +1,8 @@
 import aiohttp
 import urllib.parse
 import json
+import requests
+import logging
 from typing import Dict, Any, Optional
 from utils.logger import setup_logger
 
@@ -12,6 +14,7 @@ class AlertManager:
         self.bark_server = bark_server.rstrip('/')  # 移除末尾的斜杠
         # 构建完整的Bark URL
         self.bark_url = f"{self.bark_server}/{self.bark_key}" if self.bark_key else ""
+        logger.info(f"初始化AlertManager，Bark URL: {self.bark_url}")
 
     async def send_alert(self, message: str, data: Optional[Dict[str, Any]] = None, is_high_risk: bool = False):
         """发送警报
@@ -57,13 +60,64 @@ class AlertManager:
                         "level": "active"  # 活跃通知，但不会打断用户
                     })
                 
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(self.bark_url, json=bark_data) as response:
-                        if response.status != 200:
-                            response_text = await response.text()
-                            raise Exception(f"Bark API 返回错误: {response.status} - {response_text}")
+                # 尝试使用aiohttp发送（异步方式）
+                try:
+                    logger.debug(f"尝试使用aiohttp发送Bark通知: {self.bark_url}")
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(self.bark_url, json=bark_data, timeout=10) as response:
+                            if response.status != 200:
+                                response_text = await response.text()
+                                logger.error(f"Bark API 返回错误: {response.status} - {response_text}")
+                                # 如果异步请求失败，尝试同步请求
+                                raise Exception("异步请求失败，将尝试同步请求")
+                            else:
+                                logger.info(f"成功发送Bark{'高风险' if is_high_risk else ''}警报通知")
+                                return
+                except Exception as e:
+                    logger.warning(f"使用aiohttp发送Bark通知失败: {str(e)}，尝试使用requests")
+                    
+                    # 尝试使用requests发送（同步方式）
+                    try:
+                        # 构建GET请求URL（备用方式）
+                        encoded_title = urllib.parse.quote(title)
+                        encoded_message = urllib.parse.quote(message)
+                        get_url = f"{self.bark_server}/{self.bark_key}/{encoded_title}/{encoded_message}"
+                        
+                        # 添加参数
+                        params = {
+                            "group": "YEI监控-警报",
+                            "sound": "alarm" if is_high_risk else "warning",
+                            "level": "timeSensitive" if is_high_risk else "active",
+                            "icon": "https://sei.io/favicon.ico"
+                        }
+                        
+                        # 构建完整URL
+                        get_url += "?" + "&".join([f"{k}={urllib.parse.quote(str(v))}" for k, v in params.items()])
+                        
+                        logger.debug(f"尝试使用GET请求发送Bark通知: {get_url}")
+                        response = requests.get(get_url, timeout=10)
+                        
+                        if response.status_code != 200:
+                            logger.error(f"Bark API GET请求返回错误: {response.status_code} - {response.text}")
                         else:
-                            logger.info(f"成功发送Bark{'高风险' if is_high_risk else ''}警报通知")
+                            logger.info(f"成功使用GET请求发送Bark{'高风险' if is_high_risk else ''}警报通知")
+                            return
+                    except Exception as e2:
+                        logger.error(f"使用requests发送Bark通知失败: {str(e2)}")
+                        
+                        # 最后尝试最简单的URL
+                        try:
+                            simple_url = f"{self.bark_server}/{self.bark_key}/{encoded_title}/{encoded_message}"
+                            logger.debug(f"尝试使用最简单的URL发送Bark通知: {simple_url}")
+                            simple_response = requests.get(simple_url, timeout=10)
+                            
+                            if simple_response.status_code == 200:
+                                logger.info("成功使用简单URL发送Bark通知")
+                                return
+                            else:
+                                logger.error(f"简单URL请求失败: {simple_response.status_code}")
+                        except Exception as e3:
+                            logger.error(f"使用简单URL发送通知失败: {str(e3)}")
                         
         except Exception as e:
             logger.error(f"发送警报失败: {str(e)}") 

@@ -23,7 +23,7 @@ class Config:
     ASSET_UTILIZATION_WARNING_THRESHOLD: float = 85.0  # 单一资产利用率警戒线（百分比）
     
     # 资金流动性异常波动阈值（百分比）
-    LIQUIDITY_CHANGE_THRESHOLD: float = 10  # 流动性变化超过这个百分比时发送警报
+    LIQUIDITY_CHANGE_THRESHOLD: float = 0.01  # 流动性变化超过这个百分比时发送警报
     
     # 通知配置
     NOTIFY_ALL_EVENTS: bool = False  # 是否发送所有事件的通知（False表示只发送关键安全警报）
