@@ -1,25 +1,25 @@
 import asyncio
 import logging
 import time
-import requests
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+from utils.alerts import AlertManager
+from config.settings import Config
 
 # 加载环境变量
 load_dotenv()
 
-# 获取Bark推送URL
-BARK_URL = os.getenv("BARK_URL", "")
-if not BARK_URL:
-    logging.warning("未配置Bark URL，心跳通知将不会发送")
+logger = logging.getLogger("HeartbeatMonitor")
 
 class HeartbeatMonitor:
     def __init__(self):
-        self.logger = logging.getLogger("HeartbeatMonitor")
+        self.logger = logger
         self.morning_sent = False
         self.noon_sent = False
         self.evening_sent = False
+        # 创建AlertManager实例
+        self.alert_manager = AlertManager(Config.BARK_KEY, Config.BARK_SERVER)
         
     async def start(self):
         """启动心跳监控"""
@@ -63,33 +63,24 @@ class HeartbeatMonitor:
     
     async def _send_heartbeat(self, time_period):
         """发送心跳通知"""
-        if not BARK_URL:
-            self.logger.warning(f"{time_period}心跳通知未发送：未配置Bark URL")
-            return
-            
         try:
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             title = f"YEI监控系统 - {time_period}心跳"
             content = f"系统正常运行中\n时间: {current_time}"
             
-            # 发送Bark通知（普通消息，使用轻微提示音）
-            response = requests.post(
-                BARK_URL,
-                json={
-                    "title": title,
-                    "body": content,
-                    "group": "YEI监控-心跳",
-                    "icon": "https://sei.io/favicon.ico",
-                    "sound": "bell",  # 使用轻微的提示音
-                    "level": "passive"  # 设置为被动通知级别
-                },
-                timeout=10
+            # 使用AlertManager发送通知
+            success = self.alert_manager.send_bark_notification(
+                title=title,
+                message=content,
+                group="YEI监控-心跳",
+                sound="bell",
+                level="active"
             )
             
-            if response.status_code == 200:
+            if success:
                 self.logger.info(f"{time_period}心跳通知发送成功")
             else:
-                self.logger.error(f"{time_period}心跳通知发送失败: {response.text}")
+                self.logger.error(f"{time_period}心跳通知发送失败")
                 
         except Exception as e:
             self.logger.error(f"{time_period}心跳通知发送出错: {str(e)}")

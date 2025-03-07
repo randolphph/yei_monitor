@@ -191,9 +191,10 @@ class YEIMonitor:
                     await self.check_liquidity(event, message, asset_liquidity_data)
                 
                 # 发送通知
-                if event_types['is_high_risk_event'] or self.config.NOTIFY_ALL_EVENTS:
-                    reason = "高风险事件" if event_types['is_high_risk_event'] else "根据配置发送所有事件"
-                    await self.alert_manager.send_alert(message, is_high_risk=event_types['is_high_risk_event'])
+                need_notification, reason = await self._should_send_notification(event_name)
+                if need_notification:
+                    logger.info(f"发送通知 ({reason}): {event_name}")
+                    await self.alert_manager.send_alert(message)
                     
             except Exception as e:
                 error_msg = f"处理事件消息失败: {str(e)}"
@@ -203,7 +204,7 @@ class YEIMonitor:
         except Exception as e:
             error_msg = f"处理合约事件发生严重错误: {str(e)}"
             logger.error(error_msg)
-            await self.alert_manager.send_alert(f"严重错误\n事件: {event_name}\n错误: {error_msg}", is_high_risk=True)
+            await self.alert_manager.send_alert(f"严重错误\n事件: {event_name}\n错误: {error_msg}")
 
     def _build_event_message(self, event, is_basic_event, timestamp, asset_liquidity_data):
         """构建事件消息
