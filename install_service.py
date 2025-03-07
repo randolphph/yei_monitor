@@ -34,12 +34,13 @@ class YeiMonitorService(win32serviceutil.ServiceFramework):
             
             # 获取脚本所在目录
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            os.chdir(script_dir)
+            yei_dir = os.path.join(script_dir, "yei_monitor")
+            os.chdir(yei_dir)
             
             # 启动主程序
             self.process = subprocess.Popen(
                 [sys.executable, "main.py"],
-                cwd=script_dir,
+                cwd=yei_dir,
                 creationflags=subprocess.CREATE_NEW_CONSOLE
             )
             
