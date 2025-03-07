@@ -72,15 +72,16 @@ class HeartbeatMonitor:
             title = f"YEI监控系统 - {time_period}心跳"
             content = f"系统正常运行中\n时间: {current_time}"
             
-            # 发送Bark通知
+            # 发送Bark通知（普通消息，使用轻微提示音）
             response = requests.post(
                 BARK_URL,
                 json={
                     "title": title,
                     "body": content,
-                    "group": "YEI监控",
+                    "group": "YEI监控-心跳",
                     "icon": "https://sei.io/favicon.ico",
-                    "sound": "minuet"
+                    "sound": "bell",  # 使用轻微的提示音
+                    "level": "passive"  # 设置为被动通知级别
                 },
                 timeout=10
             )
