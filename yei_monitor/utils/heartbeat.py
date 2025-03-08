@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import time
 from datetime import datetime
 import os
 from dotenv import load_dotenv

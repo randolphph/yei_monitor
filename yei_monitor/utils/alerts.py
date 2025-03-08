@@ -1,6 +1,4 @@
-import aiohttp
 import urllib.parse
-import json
 import requests
 import time
 import logging
@@ -18,7 +16,7 @@ class AlertManager:
         logger.info(f"初始化AlertManager，Bark基础URL: {self.bark_base_url}")
         
     def send_bark_notification(self, title: str, message: str, group: str = "YEI监控", 
-                              sound: str = "bell", level: str = "active", is_high_risk: bool = False):
+                              sound: str = "bell", level: str = "active", is_high_risk: bool = False, call: str = "0"):
         """通用的Bark通知发送函数
         
         Args:
@@ -49,7 +47,8 @@ class AlertManager:
                 "group": group,
                 "sound": sound,
                 "icon": "https://sei.io/favicon.ico",
-                "level": level
+                "level": level,
+                "call": call
             }
             
             # 添加高风险参数
@@ -115,8 +114,7 @@ class AlertManager:
             title = "⚠️ YEI安全警报 ⚠️" if is_high_risk else "YEI监控警报"
             
             # 使用通用函数发送通知
-            sound = "alarm" if is_high_risk else "warning"
-            #level = "critical" if is_high_risk else "active"
+            sound = "shake"
             
             success = self.send_bark_notification(
                 title=title,
@@ -125,6 +123,7 @@ class AlertManager:
                 sound=sound,
                 level="critical",
                 is_high_risk=is_high_risk,
+                call="1"
             )
             
             if success:
