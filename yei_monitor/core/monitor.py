@@ -383,32 +383,16 @@ class YEIMonitor:
         return message
 
     async def check_liquidity(self, event, event_message, liquidity_cache):
-        """检查资金池流动性状况
-        
-        在资金变动事件（存款、提款、借款、还款等）后检查流动性，
-        如果流动性达到警戒水平，则发送通知
-        
-        Args:
-            event: 触发检查的事件
-            event_message: 事件消息
-            liquidity_cache: 流动性数据缓存
-        """
+        """检查流动性状况"""
         try:
-            logger.info("检查资产流动性状况...")
-            
-            # 获取资产地址
-            asset_address = None
-            if hasattr(event.args, 'reserve'):
-                asset_address = event.args.reserve
-            elif hasattr(event.args, 'asset'):
-                asset_address = event.args.asset
-            elif hasattr(event.args, 'debtAsset'):
-                # 清算事件有两个资产，这里优先检查债务资产
-                asset_address = event.args.debtAsset
-            
-            if not asset_address:
-                logger.warning(f"无法从事件中获取资产地址: {event.event}")
+            # 获取事件相关的资产地址
+            asset_addresses = await self._get_asset_addresses(event)
+            if not asset_addresses:
+                logger.warning(f"无法获取事件相关的资产地址: {event.event}")
                 return
+            
+            # 获取事件名称和金额
+            event_name = event.event
             
             # 获取事件金额
             event_amount = 0
@@ -416,25 +400,34 @@ class YEIMonitor:
                 event_amount = event.args.amount
             elif hasattr(event.args, 'debtToCover'):
                 event_amount = event.args.debtToCover
+            elif hasattr(event.args, 'value'):
+                event_amount = event.args.value
             
-            # 使用缓存的流动性数据
-            asset_liquidity = liquidity_cache.get(asset_address.lower())
-            if not asset_liquidity:
-                logger.error(f"获取资产流动性信息失败: {asset_address}")
-                return
+            # 遍历所有相关资产
+            for asset_address in asset_addresses:
+                # 获取资产信息
+                asset_symbol = get_token_name(asset_address)
                 
-            # 检查单一资产的流动性变化
-            asset_symbol = asset_liquidity["symbol"]
-            current_utilization = asset_liquidity["utilizationRate"]
-            
-            # 计算事件金额占总流动性的比例（基于aToken总量）
-            event_impact_percentage = 0
-            atoken_total_supply = asset_liquidity.get("totalSupply", 0)
-            if atoken_total_supply > 0 and event_amount > 0:
-                event_impact_percentage = (event_amount / atoken_total_supply) * 100
+                # 获取当前流动性数据
+                current_liquidity_data = await self.contract_manager.get_asset_liquidity(asset_address)
+                if not current_liquidity_data:
+                    logger.warning(f"无法获取资产 {asset_symbol} 的流动性数据")
+                    continue
+                
+                # 获取当前利用率
+                current_utilization = current_liquidity_data.get('utilizationRate', 0)
+                
+                # 计算事件对流动性的影响
+                event_impact_percentage = 0
+                
+                # 使用aToken总量计算变化百分比
+                atoken_total_supply = current_liquidity_data.get('totalSupply', 0)
+                if atoken_total_supply > 0 and event_amount > 0:
+                    event_impact_percentage = (event_amount / atoken_total_supply) * 100
                 
                 # 确定流动性变化方向
-                event_name = event.event
+                impact_direction = ""
+                impact_sign = ""
                 if event_name in ["Supply", "Repay"]:
                     impact_direction = "增加"  # 这些事件增加流动性
                     impact_sign = "+"
@@ -447,8 +440,11 @@ class YEIMonitor:
                 
                 logger.info(f"事件'{event_name}'导致{asset_symbol}流动性{impact_direction}{event_impact_percentage:.8f}%")
                 
+                # 标记是否触发了流动性异常波动阈值
+                liquidity_change_triggered = event_impact_percentage >= self.config.LIQUIDITY_CHANGE_THRESHOLD
+                
                 # 如果流动性变化超过阈值，发送通知
-                if event_impact_percentage >= self.config.LIQUIDITY_CHANGE_THRESHOLD:
+                if liquidity_change_triggered:
                     await self.alert_manager.send_alert(
                         f"⚠️ {asset_symbol}资产流动性{impact_direction}超过阈值\n"
                         f"当前利用率: {current_utilization:.2f}%\n"
@@ -459,28 +455,31 @@ class YEIMonitor:
                     )
                     logger.warning(f"{asset_symbol}资产流动性{impact_direction}超过阈值: {impact_sign}{event_impact_percentage:.2f}%, 当前利用率: {current_utilization:.2f}%")
             
-            # 检查单一资产利用率是否达到警戒线
-            if current_utilization >= self.config.ASSET_UTILIZATION_WARNING_THRESHOLD:
-                # 计算当前流动性百分比
-                liquidity_percentage = 100 - current_utilization
-                
-                # 准备事件影响信息
-                event_impact_info = ""
-                if event_impact_percentage > 0:
-                    event_impact_info = f"本次事件流动性影响: {impact_sign}{event_impact_percentage:.2f}%\n"
-                
-                await self.alert_manager.send_alert(
-                    f"⚠️ {asset_symbol}资产利用率达到警戒线\n"
-                    f"当前利用率: {current_utilization:.2f}%\n"
-                    f"警戒线: {self.config.ASSET_UTILIZATION_WARNING_THRESHOLD:.2f}%\n"
-                    f"当前流动性: {liquidity_percentage:.2f}%\n"
-                    f"{event_impact_info}"
-                    f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-                    f"\n--- 触发事件 ---\n{event_message}"
-                )
-                logger.warning(f"{asset_symbol}资产利用率达到警戒线: {current_utilization:.2f}%, 剩余流动性: {liquidity_percentage:.2f}%")
+                    # 只有在流动性异常波动阈值被触发后才检测资金池利用率
+                    if current_utilization >= self.config.ASSET_UTILIZATION_WARNING_THRESHOLD:
+                        # 计算当前流动性百分比
+                        liquidity_percentage = 100 - current_utilization
+                        
+                        # 准备事件影响信息
+                        event_impact_info = ""
+                        if event_impact_percentage > 0:
+                            event_impact_info = f"本次事件流动性影响: {impact_sign}{event_impact_percentage:.2f}%\n"
+                        
+                        await self.alert_manager.send_alert(
+                            f"⚠️ {asset_symbol}资产利用率达到警戒线\n"
+                            f"当前利用率: {current_utilization:.2f}%\n"
+                            f"警戒线: {self.config.ASSET_UTILIZATION_WARNING_THRESHOLD:.2f}%\n"
+                            f"当前流动性: {liquidity_percentage:.2f}%\n"
+                            f"{event_impact_info}"
+                            f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                            f"\n--- 触发事件 ---\n{event_message}"
+                        )
+                        logger.warning(f"{asset_symbol}资产利用率达到警戒线: {current_utilization:.2f}%, 剩余流动性: {liquidity_percentage:.2f}%")
+                else:
+                    # 如果没有触发流动性异常波动阈值，记录日志但不检查利用率
+                    logger.info(f"{asset_symbol}流动性变化未超过阈值({event_impact_percentage:.2f}% < {self.config.LIQUIDITY_CHANGE_THRESHOLD:.2f}%)，跳过利用率检查")
             
-            logger.info(f"资产流动性检查完成 - {asset_symbol}利用率: {current_utilization:.2f}%")
+                logger.info(f"资产流动性检查完成 - {asset_symbol}利用率: {current_utilization:.2f}%")
             
         except Exception as e:
             logger.error(f"检查流动性状况失败: {str(e)}")
