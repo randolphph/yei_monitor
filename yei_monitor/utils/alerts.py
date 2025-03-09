@@ -96,13 +96,14 @@ class AlertManager:
                 logger.error(f"最后尝试也失败: {str(e2)}")
                 return False
 
-    async def send_alert(self, message: str, data: Optional[Dict[str, Any]] = None, is_high_risk: bool = False):
+    async def send_alert(self, message: str, data: Optional[Dict[str, Any]] = None, is_high_risk: bool = False, call_value: str = "0"):
         """发送警报
         
         Args:
             message: 警报消息
             data: 详细数据
             is_high_risk: 是否为高风险警报
+            call_value: 是否进行语音通知，"1"表示通知，"0"表示不通知
         """
         try:
             # 记录日志
@@ -114,16 +115,16 @@ class AlertManager:
             title = "⚠️ YEI安全警报 ⚠️" if is_high_risk else "YEI监控警报"
             
             # 使用通用函数发送通知
-            sound = "shake"
+            sound = "shake" if is_high_risk else "warning"
             
             success = self.send_bark_notification(
                 title=title,
                 message=message,
                 group="YEI监控-警报",
                 sound=sound,
-                level="critical",
+                level="critical" if is_high_risk else "active",
                 is_high_risk=is_high_risk,
-                call="1"
+                call=call_value
             )
             
             if success:

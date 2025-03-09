@@ -5,7 +5,7 @@ from core.contract import ContractManager
 from core.state import ContractState
 from utils.alerts import AlertManager
 from utils.logger import setup_logger
-from utils.amount_utils import format_amount, format_interest_rate, get_token_name
+from utils.amount_utils import format_amount, format_interest_rate, get_token_name, TOKEN_DECIMALS
 
 logger = setup_logger(__name__)
 
@@ -194,7 +194,54 @@ class YEIMonitor:
                 need_notification, reason = await self._should_send_notification(event_name)
                 if need_notification:
                     logger.info(f"发送通知 ({reason}): {event_name}")
-                    await self.alert_manager.send_alert(message)
+                    
+                    # 判断事件金额是否超过limit阈值
+                    is_important = False
+                    call_value = "0"  # 默认不进行语音通知
+                    
+                    # 获取事件金额和资产地址
+                    event_amount = 0
+                    asset_address = None
+                    
+                    if hasattr(event.args, 'amount'):
+                        event_amount = event.args.amount
+                    elif hasattr(event.args, 'debtToCover'):
+                        event_amount = event.args.debtToCover
+                    elif hasattr(event.args, 'value'):
+                        event_amount = event.args.value
+                        
+                    if hasattr(event.args, 'reserve'):
+                        asset_address = event.args.reserve
+                    elif hasattr(event.args, 'asset'):
+                        asset_address = event.args.asset
+                    elif hasattr(event.args, 'debtAsset'):
+                        asset_address = event.args.debtAsset
+                    
+                    # 如果有资产地址和事件金额，检查是否超过limit
+                    if asset_address and event_amount > 0:
+                        token_info = TOKEN_DECIMALS.get(asset_address.lower())
+                        
+                        if token_info and "limit" in token_info and "decimals" in token_info:
+                            # 将事件金额转换为实际金额（考虑代币精度）
+                            decimals = token_info["decimals"]
+                            actual_amount = event_amount / (10 ** decimals)
+                            limit = token_info["limit"]
+                            
+                            # 判断是否超过limit
+                            if actual_amount >= limit:
+                                is_important = True
+                                call_value = "1"  # 进行语音通知
+                                logger.info(f"事件金额 {actual_amount} {token_info['symbol']} 超过阈值 {limit}，发送重要通知")
+                            else:
+                                logger.info(f"事件金额 {actual_amount} {token_info['symbol']} 未超过阈值 {limit}，发送普通通知")
+                    
+                    # 根据优先级发送不同级别的通知
+                    if is_important:
+                        # 发送重要通知（带语音提醒）
+                        await self.alert_manager.send_alert(message, is_high_risk=True, call_value=call_value)
+                    else:
+                        # 发送普通通知
+                        await self.alert_manager.send_alert(message)
                     
             except Exception as e:
                 error_msg = f"处理事件消息失败: {str(e)}"
@@ -204,7 +251,7 @@ class YEIMonitor:
         except Exception as e:
             error_msg = f"处理合约事件发生严重错误: {str(e)}"
             logger.error(error_msg)
-            await self.alert_manager.send_alert(f"严重错误\n事件: {event_name}\n错误: {error_msg}")
+            await self.alert_manager.send_alert(f"严重错误\n事件: {event_name}\n错误: {error_msg}", is_high_risk=True)
 
     def _build_event_message(self, event, is_basic_event, timestamp, asset_liquidity_data):
         """构建事件消息
@@ -445,13 +492,37 @@ class YEIMonitor:
                 
                 # 如果流动性变化超过阈值，发送通知
                 if liquidity_change_triggered:
+                    # 判断事件金额是否超过limit阈值
+                    is_important = False
+                    call_value = "0"  # 默认不进行语音通知
+                    
+                    # 检查是否超过limit
+                    if asset_address and event_amount > 0:
+                        token_info = TOKEN_DECIMALS.get(asset_address.lower())
+                        
+                        if token_info and "limit" in token_info and "decimals" in token_info:
+                            # 将事件金额转换为实际金额（考虑代币精度）
+                            decimals = token_info["decimals"]
+                            actual_amount = event_amount / (10 ** decimals)
+                            limit = token_info["limit"]
+                            
+                            # 判断是否超过limit
+                            if actual_amount >= limit:
+                                is_important = True
+                                call_value = "1"  # 进行语音通知
+                                logger.info(f"流动性检查: 事件金额 {actual_amount} {token_info['symbol']} 超过阈值 {limit}，发送重要通知")
+                            else:
+                                logger.info(f"流动性检查: 事件金额 {actual_amount} {token_info['symbol']} 未超过阈值 {limit}，发送普通通知")
+                    
                     await self.alert_manager.send_alert(
                         f"⚠️ {asset_symbol}资产流动性{impact_direction}超过阈值\n"
                         f"当前利用率: {current_utilization:.2f}%\n"
                         f"变化幅度: {impact_sign}{event_impact_percentage:.2f}%\n"
                         f"事件类型: {event_name}\n"
                         f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-                        f"\n--- 触发事件 ---\n{event_message}"
+                        f"\n--- 触发事件 ---\n{event_message}",
+                        is_high_risk=is_important,
+                        call_value=call_value
                     )
                     logger.warning(f"{asset_symbol}资产流动性{impact_direction}超过阈值: {impact_sign}{event_impact_percentage:.2f}%, 当前利用率: {current_utilization:.2f}%")
             
@@ -466,13 +537,15 @@ class YEIMonitor:
                             event_impact_info = f"本次事件流动性影响: {impact_sign}{event_impact_percentage:.2f}%\n"
                         
                         await self.alert_manager.send_alert(
-                            f"⚠️ {asset_symbol}资产利用率达到警戒线\n"
+                            f"⚠️ {asset_symbol}LIQUIDITY_CHANGE_THRESHOLD\n"
                             f"当前利用率: {current_utilization:.2f}%\n"
                             f"警戒线: {self.config.ASSET_UTILIZATION_WARNING_THRESHOLD:.2f}%\n"
                             f"当前流动性: {liquidity_percentage:.2f}%\n"
                             f"{event_impact_info}"
                             f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-                            f"\n--- 触发事件 ---\n{event_message}"
+                            f"\n--- 触发事件 ---\n{event_message}",
+                            is_high_risk=is_important,
+                            call_value=call_value
                         )
                         logger.warning(f"{asset_symbol}资产利用率达到警戒线: {current_utilization:.2f}%, 剩余流动性: {liquidity_percentage:.2f}%")
                 else:
