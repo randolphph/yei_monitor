@@ -537,7 +537,7 @@ class YEIMonitor:
                             event_impact_info = f"本次事件流动性影响: {impact_sign}{event_impact_percentage:.2f}%\n"
                         
                         await self.alert_manager.send_alert(
-                            f"⚠️ {asset_symbol}LIQUIDITY_CHANGE_THRESHOLD\n"
+                            f"⚠️ {asset_symbol}资金利用率超过阈值\n"
                             f"当前利用率: {current_utilization:.2f}%\n"
                             f"警戒线: {self.config.ASSET_UTILIZATION_WARNING_THRESHOLD:.2f}%\n"
                             f"当前流动性: {liquidity_percentage:.2f}%\n"
