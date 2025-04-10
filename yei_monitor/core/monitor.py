@@ -141,11 +141,12 @@ class YEIMonitor:
             logger.error(f"处理资产地址失败: {str(e)}")
         return asset_liquidity_data
 
-    async def _should_send_notification(self, event_name: str) -> tuple:
+    async def _should_send_notification(self, event_name: str, event=None) -> tuple:
         """判断是否需要发送通知
         
         Args:
             event_name: 事件名称
+            event: 事件对象（可选）
             
         Returns:
             tuple: (是否发送通知, 通知原因)
@@ -156,6 +157,26 @@ class YEIMonitor:
             event_types['is_high_risk_event']
         )
         reason = "高风险事件" if event_types['is_high_risk_event'] else "根据配置发送所有事件"
+        
+        # 对 LiquidationCall 事件进行特殊处理
+        if event_name == "LiquidationCall" and event and hasattr(event.args, 'debtToCover') and hasattr(event.args, 'debtAsset'):
+            debt_asset = event.args.debtAsset.lower()
+            debt_to_cover = event.args.debtToCover
+            
+            # 获取代币信息
+            token_info = TOKEN_DECIMALS.get(debt_asset)
+            if token_info and "liquidation_limit" in token_info and "decimals" in token_info:
+                # 将清算金额转换为实际金额（考虑代币精度）
+                decimals = token_info["decimals"]
+                actual_amount = debt_to_cover / (10 ** decimals)
+                liquidation_limit = token_info["liquidation_limit"]
+                
+                # 如果清算金额小于 liquidation_limit，不发送通知
+                if actual_amount < liquidation_limit:
+                    need_notification = False
+                    reason = f"清算金额 {actual_amount} {token_info['symbol']} 小于阈值 {liquidation_limit}"
+                    logger.info(f"LiquidationCall 事件不发送通知: {reason}")
+        
         return need_notification, reason
 
     async def handle_implementation_event(self, event):
@@ -191,7 +212,7 @@ class YEIMonitor:
                     await self.check_liquidity(event, message, asset_liquidity_data)
                 
                 # 发送通知
-                need_notification, reason = await self._should_send_notification(event_name)
+                need_notification, reason = await self._should_send_notification(event_name, event)
                 if need_notification:
                     logger.info(f"发送通知 ({reason}): {event_name}")
                     

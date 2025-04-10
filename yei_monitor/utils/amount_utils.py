@@ -12,19 +12,19 @@ DEFAULT_DECIMALS = 18  # 大多数ERC20代币使用18位精度
 TOKEN_DECIMALS: Dict[str, dict] = {
     # 初始预设常见代币，将由动态获取的数据补充
     # 如果合约调用失败，至少有这些基础代币信息
-    "0x3894085ef7ff0f0aedf52e2a2704928d1ec074f1": {"symbol": "USDC", "decimals": 6, "limit": 200000},
-    "0xe30fedd158a2e3b13e9badaeabafc5516e95e8c7": {"symbol": "WSEI", "decimals": 18, "limit": 1000000},
-    "0x5cf6826140c1c56ff49c808a1a75407cd1df9423": {"symbol": "ISEI", "decimals": 6, "limit": 1000000 },
-    "0x160345fc359604fc6e70e3c5facbde5f7a9342d8": {"symbol": "WETH", "decimals": 18, "limit": 100},
-    "0x0555e30da8f98308edb960aa94c0db47230d2b9c": {"symbol": "WBTC", "decimals": 8, "limit": 2},
-    "0x37a4dd9ced2b19cfe8fac251cd727b5787e45269": {"symbol": "fastUSD", "decimals": 18, "limit": 200000},
-    "0x541fd749419ca806a8bc7da8ac23d346f2df8b77": {"symbol": "SolvBTC", "decimals": 18, "limit": 2},
-    "0xb75d0b03c06a926e488e2659df1a861f860bd3d1": {"symbol": "USDT", "decimals": 6, "limit": 200000},
-    "0xdf77686d99667ae56bc18f539b777dbc2bbe3e9f": {"symbol": "sfastUSD", "decimals": 18, "limit": 200000},
-    "0x80eede496655fb9047dd39d9f418d5483ed600df": {"symbol": "frxUSD", "decimals": 18, "limit": 200000},
-    "0x3ec3849c33291a9ef4c5db86de593eb4a37fde45": {"symbol": "sfrxETH", "decimals": 18, "limit": 100},
-    "0x5bff88ca1442c2496f7e475e9e7786383bc070c0": {"symbol": "sfrxUSD", "decimals": 18, "limit": 200000},
-    "0x43edd7f3831b08fe70b7555ddd373c8bf65a9050": {"symbol": "frxETH", "decimals": 18, "limit": 100},
+    "0x3894085ef7ff0f0aedf52e2a2704928d1ec074f1": {"symbol": "USDC", "decimals": 6, "limit": 200000, "liquidation_limit": 100},
+    "0xe30fedd158a2e3b13e9badaeabafc5516e95e8c7": {"symbol": "WSEI", "decimals": 18, "limit": 1000000, "liquidation_limit": 500},
+    "0x5cf6826140c1c56ff49c808a1a75407cd1df9423": {"symbol": "ISEI", "decimals": 6, "limit": 1000000, "liquidation_limit": 500 },
+    "0x160345fc359604fc6e70e3c5facbde5f7a9342d8": {"symbol": "WETH", "decimals": 18, "limit": 100, "liquidation_limit": 0.05},
+    "0x0555e30da8f98308edb960aa94c0db47230d2b9c": {"symbol": "WBTC", "decimals": 8, "limit": 2, "liquidation_limit": 0.001},
+    "0x37a4dd9ced2b19cfe8fac251cd727b5787e45269": {"symbol": "fastUSD", "decimals": 18, "limit": 200000, "liquidation_limit": 100},
+    "0x541fd749419ca806a8bc7da8ac23d346f2df8b77": {"symbol": "SolvBTC", "decimals": 18, "limit": 2, "liquidation_limit": 0.001},
+    "0xb75d0b03c06a926e488e2659df1a861f860bd3d1": {"symbol": "USDT", "decimals": 6, "limit": 200000, "liquidation_limit": 100},
+    "0xdf77686d99667ae56bc18f539b777dbc2bbe3e9f": {"symbol": "sfastUSD", "decimals": 18, "limit": 200000, "liquidation_limit": 100},
+    "0x80eede496655fb9047dd39d9f418d5483ed600df": {"symbol": "frxUSD", "decimals": 18, "limit": 200000, "liquidation_limit": 100},
+    "0x3ec3849c33291a9ef4c5db86de593eb4a37fde45": {"symbol": "sfrxETH", "decimals": 18, "limit": 100, "liquidation_limit": 0.05},
+    "0x5bff88ca1442c2496f7e475e9e7786383bc070c0": {"symbol": "sfrxUSD", "decimals": 18, "limit": 200000, "liquidation_limit": 100},
+    "0x43edd7f3831b08fe70b7555ddd373c8bf65a9050": {"symbol": "frxETH", "decimals": 18, "limit": 100, "liquidation_limit": 0.05},
 }
 
 def get_token_name(asset_address: str) -> str:
